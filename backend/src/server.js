@@ -11,7 +11,10 @@ const routes = require('./routes');
 const app = express();
 
 // Segurança
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(cors({
   origin: env.nodeEnv === 'production' ? true : env.frontendUrl,
   credentials: true,
@@ -50,8 +53,9 @@ app.use('/api', routes);
 // Em produção, servir frontend build
 if (env.nodeEnv === 'production') {
   const frontendPath = path.resolve(__dirname, '..', 'frontend', 'dist');
-  app.use(express.static(frontendPath));
-  app.get('*', (req, res) => {
+  app.use(express.static(frontendPath, { maxAge: '30d' }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(frontendPath, 'index.html'));
   });
 }
