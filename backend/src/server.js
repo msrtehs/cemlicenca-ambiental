@@ -44,6 +44,16 @@ app.use('/api/auth/login', authLimiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Garantir charset UTF-8 em todas as respostas JSON
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    return originalJson(body);
+  };
+  next();
+});
+
 // Servir arquivos estáticos (uploads)
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 

@@ -58,7 +58,7 @@ export default function ContratoCalculadora() {
   const calcular = async () => {
     const payload = {
       cemiterios: cemiterios.map(c => ({
-        area: parseFloat(c.area) || 0,
+        areaHa: parseFloat(c.area) || 0,
         modulos: c.modulos,
       })),
       moduloMonitoramento,
