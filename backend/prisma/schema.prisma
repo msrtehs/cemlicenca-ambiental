@@ -1,0 +1,556 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== AUTENTICAÇÃO & USUÁRIOS ====================
+
+model Prefeitura {
+  id            String   @id @default(uuid())
+  cnpj          String   @unique
+  nome          String
+  uf            String   @db.Char(2)
+  cidade        String
+  cep           String?
+  endereco      String?
+  telefone      String?
+  email         String?
+  populacao     Int?
+  // Dados de contratação
+  planoAtual    PlanoTipo @default(TRIAL)
+  dataContrato  DateTime?
+  dataExpiracao DateTime?
+  valorContrato Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  usuarios      Usuario[]
+  cemiterios    Cemiterio[]
+  contratos     Contrato[]
+  notificacoes  Notificacao[]
+
+  @@map("prefeituras")
+}
+
+enum PlanoTipo {
+  TRIAL
+  BASICO
+  PROFISSIONAL
+  ENTERPRISE
+}
+
+model Usuario {
+  id            String   @id @default(uuid())
+  prefeituraId  String
+  nome          String
+  email         String   @unique
+  senha         String?  // null se login via Gov.br
+  cpf           String?  @unique
+  cargo         String?
+  perfil        PerfilTipo @default(TECNICO)
+  govbrId       String?  @unique
+  ativo         Boolean  @default(true)
+  ultimoLogin   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  prefeitura    Prefeitura @relation(fields: [prefeituraId], references: [id])
+  logs          LogAuditoria[]
+  documentos    Documento[]
+
+  @@map("usuarios")
+}
+
+enum PerfilTipo {
+  ADMIN
+  SECRETARIO
+  TECNICO
+  CONTADOR
+  AUDITOR
+  CONSULTOR
+}
+
+// ==================== CADASTRO DE CEMITÉRIO ====================
+
+model Cemiterio {
+  id              String   @id @default(uuid())
+  prefeituraId    String
+  nome            String
+  tipo            CemiterioTipo @default(MUNICIPAL)
+  endereco        String
+  cidade          String
+  uf              String   @db.Char(2)
+  cep             String?
+  latitude        Float?
+  longitude       Float?
+  areaTotal       Float?   // em hectares
+  anoFundacao     Int?
+  // Dados ambientais
+  tipoSolo        TipoSolo?
+  nivelLencolFreatico Float? // em metros
+  distanciaCorpoHidrico Float? // em metros
+  volumeEnterrosAnual Int?
+  totalSepulturas Int?
+  sepulturasOcupadas Int?
+  sepulturasDisponiveis Int?
+  // Indicadores
+  riscoNecrochorume Float?  // 0 a 100%
+  percentualOcupacao Float? // 0 a 100%
+  possuiOssario   Boolean  @default(false)
+  possuiCapela    Boolean  @default(false)
+  possuiDrenagem          Boolean  @default(false)
+  possuiImpermeabilizacao Boolean  @default(false)
+  // Status
+  status          CemiterioStatus @default(CADASTRO)
+  possuiLiminar   Boolean  @default(false)
+  prazoLiminar    DateTime?
+  observacoes     String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  prefeitura      Prefeitura @relation(fields: [prefeituraId], references: [id])
+  arquivos        ArquivoCemiterio[]
+  checklistItens  ChecklistItem[]
+  licenciamentos  Licenciamento[]
+  monitoramentos  Monitoramento[]
+  documentos      Documento[]
+  dadosImportados DadoImportado[]
+
+  @@map("cemiterios")
+}
+
+enum CemiterioTipo {
+  MUNICIPAL
+  DISTRITAL
+  PARTICULAR
+  COMUNITARIO
+}
+
+enum CemiterioStatus {
+  CADASTRO
+  DIAGNOSTICO
+  EM_LICENCIAMENTO
+  LICENCIADO
+  MONITORAMENTO
+  IRREGULAR
+  INTERDITADO
+}
+
+enum TipoSolo {
+  ARENOSO
+  ARGILOSO
+  SILTOSO
+  MISTO
+  ROCHOSO
+  NAO_INFORMADO
+}
+
+model ArquivoCemiterio {
+  id           String   @id @default(uuid())
+  cemiterioId  String
+  tipo         ArquivoTipo
+  nomeOriginal String
+  caminho      String
+  tamanho      Int      // bytes
+  mimeType     String
+  createdAt    DateTime @default(now())
+
+  cemiterio    Cemiterio @relation(fields: [cemiterioId], references: [id], onDelete: Cascade)
+
+  @@map("arquivos_cemiterio")
+}
+
+enum ArquivoTipo {
+  PLANTA_BAIXA
+  FOTO
+  DOCUMENTO
+  PLANILHA_IMPORTADA
+  MEMORIAL_DESCRITIVO
+  LAUDO_TECNICO
+  OUTRO
+}
+
+model ChecklistItem {
+  id           String   @id @default(uuid())
+  cemiterioId  String
+  categoria    String   // ex: "CONAMA 335", "CPRH-PE"
+  codigo       String   // ex: "CONAMA-335-ART-5-I"
+  descricao    String
+  obrigatorio  Boolean  @default(true)
+  conforme     Boolean?
+  observacao   String?  @db.Text
+  evidencia    String?  // caminho do arquivo
+  verificadoPor String?
+  verificadoEm DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cemiterio    Cemiterio @relation(fields: [cemiterioId], references: [id], onDelete: Cascade)
+
+  @@map("checklist_itens")
+}
+
+model DadoImportado {
+  id           String   @id @default(uuid())
+  cemiterioId  String
+  fonteOrigem  String   // "EXCEL", "PDF", "MANUAL"
+  nomeArquivo  String?
+  dados        Json     // dados parseados da planilha
+  totalRegistros Int
+  registrosValidos Int
+  registrosErro Int
+  erros        Json?    // detalhes dos erros
+  status       ImportStatus @default(PENDENTE)
+  createdAt    DateTime @default(now())
+
+  cemiterio    Cemiterio @relation(fields: [cemiterioId], references: [id], onDelete: Cascade)
+
+  @@map("dados_importados")
+}
+
+enum ImportStatus {
+  PENDENTE
+  PROCESSANDO
+  CONCLUIDO
+  ERRO
+}
+
+// ==================== LICENCIAMENTO ====================
+
+model Licenciamento {
+  id              String   @id @default(uuid())
+  cemiterioId     String
+  tipo            LicenciaTipo
+  status          LicenciamentoStatus @default(DIAGNOSTICO)
+  // Diagnóstico
+  percentualConformidade Float?
+  riscoGeral      RiscoNivel?
+  diagnosticoJson Json?    // resultado completo do diagnóstico
+  // Protocolo
+  orgaoAmbiental  String?  // ex: "CPRH", "FATMA"
+  numeroProtocolo String?
+  dataProtocolo   DateTime?
+  // Prazos
+  prazoLegal      DateTime?
+  prazoLiminar    DateTime?
+  // Licença
+  numeroLicenca   String?
+  dataEmissao     DateTime?
+  dataValidade    DateTime?
+  // Versão express (dispensa até R$ 65.492)
+  isExpress       Boolean  @default(false)
+  // Observações
+  observacoes     String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  cemiterio       Cemiterio @relation(fields: [cemiterioId], references: [id])
+  documentos      Documento[]
+  etapas          EtapaLicenciamento[]
+
+  @@map("licenciamentos")
+}
+
+enum LicenciaTipo {
+  LP    // Licença Prévia
+  LI    // Licença de Instalação
+  LO    // Licença de Operação
+  LOS   // Licença de Operação Simplificada
+  LAR   // Licença Ambiental de Regularização
+}
+
+enum LicenciamentoStatus {
+  DIAGNOSTICO
+  PROJETO_BASICO
+  AGUARDANDO_PROTOCOLO
+  PROTOCOLADO
+  EM_ANALISE
+  EXIGENCIAS
+  APROVADO
+  LICENCA_EMITIDA
+  RENOVACAO
+  INDEFERIDO
+  CANCELADO
+}
+
+enum RiscoNivel {
+  BAIXO
+  MEDIO
+  ALTO
+  CRITICO
+}
+
+model EtapaLicenciamento {
+  id              String   @id @default(uuid())
+  licenciamentoId String
+  ordem           Int
+  nome            String
+  descricao       String?
+  status          EtapaStatus @default(PENDENTE)
+  dataInicio      DateTime?
+  dataConclusao   DateTime?
+  observacao      String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  licenciamento   Licenciamento @relation(fields: [licenciamentoId], references: [id], onDelete: Cascade)
+
+  @@map("etapas_licenciamento")
+}
+
+enum EtapaStatus {
+  PENDENTE
+  EM_ANDAMENTO
+  CONCLUIDA
+  BLOQUEADA
+}
+
+model Documento {
+  id              String   @id @default(uuid())
+  licenciamentoId String?
+  cemiterioId     String?
+  usuarioId       String?
+  tipo            DocumentoTipo
+  titulo          String
+  descricao       String?
+  caminho         String?  // arquivo gerado
+  conteudoJson    Json?    // conteúdo estruturado para regeneração
+  versao          Int      @default(1)
+  status          DocumentoStatus @default(RASCUNHO)
+  assinadoPor     String?
+  assinadoEm      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  licenciamento   Licenciamento? @relation(fields: [licenciamentoId], references: [id])
+  cemiterio       Cemiterio?     @relation(fields: [cemiterioId], references: [id])
+  usuario         Usuario?       @relation(fields: [usuarioId], references: [id])
+
+  @@map("documentos")
+}
+
+enum DocumentoTipo {
+  RCA           // Relatório de Controle Ambiental
+  PCA           // Plano de Controle Ambiental
+  LP_REQUERIMENTO
+  LO_REQUERIMENTO
+  MEMORIAL_DESCRITIVO
+  ART_RRT
+  LAUDO_SOLO
+  LAUDO_AGUA
+  PLANO_ENCERRAMENTO
+  RELATORIO_DIAGNOSTICO
+  RELATORIO_MONITORAMENTO
+  CONTRATO
+  JUSTIFICATIVA_DISPENSA
+  JUSTIFICATIVA_INEXIGIBILIDADE
+  PARECER_NOTORIA_ESPECIALIZACAO
+  OUTRO
+}
+
+enum DocumentoStatus {
+  RASCUNHO
+  GERADO
+  REVISADO
+  ASSINADO
+  PROTOCOLADO
+  ARQUIVADO
+}
+
+// ==================== PAGAMENTOS & CONTRATAÇÃO ====================
+
+model Contrato {
+  id              String   @id @default(uuid())
+  prefeituraId    String
+  tipo            ContratoTipo
+  modalidade      ModalidadeContratacao
+  // Valores
+  valorTotal      Float
+  valorMensal     Float?   // assinatura recorrente
+  parcelas        Int      @default(1)
+  // Módulos contratados
+  moduloCadastro      Boolean @default(true)
+  moduloLicenciamento Boolean @default(true)
+  moduloContratacao   Boolean @default(true)
+  moduloMonitoramento Boolean @default(false)
+  // Datas
+  dataInicio      DateTime
+  dataFim         DateTime?
+  // Status
+  status          ContratoStatus @default(RASCUNHO)
+  justificativaLegal String? @db.Text
+  observacoes     String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  prefeitura      Prefeitura @relation(fields: [prefeituraId], references: [id])
+  pagamentos      Pagamento[]
+
+  @@map("contratos")
+}
+
+enum ContratoTipo {
+  ONE_TIME          // contratação única
+  ASSINATURA        // mensal recorrente
+  ONE_TIME_PLUS_ASSINATURA
+}
+
+enum ModalidadeContratacao {
+  DISPENSA_ART75_II      // até R$ 65.492,11
+  INEXIGIBILIDADE_ART74_III // serviços técnicos especializados
+  LICITACAO_PREGAO
+}
+
+enum ContratoStatus {
+  RASCUNHO
+  JUSTIFICATIVA_GERADA
+  ENVIADO
+  ASSINADO
+  ATIVO
+  ENCERRADO
+  CANCELADO
+}
+
+model Pagamento {
+  id           String   @id @default(uuid())
+  contratoId   String
+  parcela      Int
+  valor        Float
+  dataVencimento DateTime
+  dataPagamento DateTime?
+  status       PagamentoStatus @default(PENDENTE)
+  comprovante  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contrato     Contrato @relation(fields: [contratoId], references: [id])
+
+  @@map("pagamentos")
+}
+
+enum PagamentoStatus {
+  PENDENTE
+  PAGO
+  ATRASADO
+  CANCELADO
+}
+
+// ==================== MONITORAMENTO ====================
+
+model Monitoramento {
+  id            String   @id @default(uuid())
+  cemiterioId   String
+  periodo       String   // ex: "2026-Q1"
+  dataColeta    DateTime
+  // Indicadores
+  nivelNecrochorume    Float?  // concentração em mg/L
+  phSolo               Float?
+  nivelLencolFreatico  Float?
+  percentualOcupacao   Float?
+  novosSepultamentos   Int?
+  exumacoes            Int?
+  ossariosUtilizados   Int?
+  // Alertas
+  alertaContaminacao   Boolean @default(false)
+  alertaSuperlotacao   Boolean @default(false)
+  alertaManutencao     Boolean @default(false)
+  descricaoAlerta      String? @db.Text
+  // Status
+  status               MonitoramentoStatus @default(PENDENTE)
+  relatorioGerado      Boolean @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  cemiterio            Cemiterio @relation(fields: [cemiterioId], references: [id])
+
+  @@map("monitoramentos")
+}
+
+enum MonitoramentoStatus {
+  PENDENTE
+  EM_COLETA
+  CONCLUIDO
+  ALERTA
+}
+
+// ==================== NOTIFICAÇÕES ====================
+
+model Notificacao {
+  id            String   @id @default(uuid())
+  prefeituraId  String
+  tipo          NotificacaoTipo
+  canal         CanalNotificacao
+  titulo        String
+  mensagem      String   @db.Text
+  destinatario  String   // email, telefone etc.
+  enviada       Boolean  @default(false)
+  enviadaEm     DateTime?
+  lida          Boolean  @default(false)
+  lidaEm        DateTime?
+  createdAt     DateTime @default(now())
+
+  prefeitura    Prefeitura @relation(fields: [prefeituraId], references: [id])
+
+  @@map("notificacoes")
+}
+
+enum NotificacaoTipo {
+  PRAZO_LIMINAR
+  PRAZO_LICENCA
+  VENCIMENTO_PAGAMENTO
+  ALERTA_MONITORAMENTO
+  ATUALIZACAO_STATUS
+  SISTEMA
+}
+
+enum CanalNotificacao {
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+  INTERNO
+}
+
+// ==================== AUDITORIA ====================
+
+model LogAuditoria {
+  id          String   @id @default(uuid())
+  usuarioId   String?
+  acao        String   // "CREATE", "UPDATE", "DELETE", "LOGIN", "EXPORT"
+  entidade    String   // "Cemiterio", "Licenciamento" etc.
+  entidadeId  String?
+  detalhes    Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  usuario     Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([entidade, entidadeId])
+  @@index([usuarioId])
+  @@index([createdAt])
+  @@map("logs_auditoria")
+}
+
+// ==================== REGRAS POR UF ====================
+
+model RegraEstadual {
+  id             String   @id @default(uuid())
+  uf             String   @db.Char(2)
+  orgaoAmbiental String   // ex: "CPRH", "FATMA", "SEMA"
+  norma          String   // ex: "Instrução Normativa 007/2023"
+  descricao      String   @db.Text
+  requisitos     Json     // requisitos específicos do estado
+  apiDisponivel  Boolean  @default(false)
+  urlProtocolo   String?
+  urlConsulta    String?
+  ativo          Boolean  @default(true)
+  atualizadoEm   DateTime @default(now())
+
+  @@unique([uf, norma])
+  @@map("regras_estaduais")
+}

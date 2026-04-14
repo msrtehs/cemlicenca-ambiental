@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cemlicenca-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cemlicenca
+      POSTGRES_PASSWORD: cemlicenca2026
+      POSTGRES_DB: cemlicenca_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cemlicenca -d cemlicenca_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: cemlicenca-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://cemlicenca:cemlicenca2026@postgres:5432/cemlicenca_db
+      JWT_SECRET: cemlicenca-jwt-secret-2026-mudar-em-producao
+      PORT: 3001
+      NODE_ENV: production
+      FRONTEND_URL: http://localhost
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: cemlicenca-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads:
