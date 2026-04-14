@@ -13,7 +13,7 @@ const app = express();
 // Segurança
 app.use(helmet());
 app.use(cors({
-  origin: env.frontendUrl,
+  origin: env.nodeEnv === 'production' ? true : env.frontendUrl,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -22,7 +22,7 @@ app.use(cors({
 // Rate limiting - proteção contra abuso
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // máximo 100 requests por IP por janela
+  max: 500, // máximo 500 requests por IP por janela
   message: { error: 'Muitas requisições. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -46,6 +46,15 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Rotas da API
 app.use('/api', routes);
+
+// Em produção, servir frontend build
+if (env.nodeEnv === 'production') {
+  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
+  app.use(express.static(frontendPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+}
 
 // Error handler (deve ser o último middleware)
 app.use(errorHandler);
