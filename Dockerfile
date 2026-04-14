@@ -30,4 +30,4 @@ RUN mkdir -p uploads
 EXPOSE 3001
 
 # Run migrations and start server
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node src/server.js"]
+CMD ["sh", "-c", "sleep 3 && npx prisma db push --skip-generate && node src/server.js"]

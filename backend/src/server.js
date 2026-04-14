@@ -64,7 +64,7 @@ const cronService = require('./services/cronService');
 cronService.iniciar();
 
 // Iniciar servidor
-app.listen(env.port, () => {
+app.listen(env.port, '0.0.0.0', () => {
   logger.info(`CemLicença API rodando na porta ${env.port} (${env.nodeEnv})`);
   console.log(`\n  CemLicença Ambiental API`);
   console.log(`  Ambiente: ${env.nodeEnv}`);
