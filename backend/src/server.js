@@ -49,7 +49,7 @@ app.use('/api', routes);
 
 // Em produção, servir frontend build
 if (env.nodeEnv === 'production') {
-  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
+  const frontendPath = path.resolve(__dirname, '..', 'frontend', 'dist');
   app.use(express.static(frontendPath));
   app.get('*', (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
